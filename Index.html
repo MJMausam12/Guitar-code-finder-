@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>ChordCraft · Guitar chords from any YouTube song</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Lora:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: linear-gradient(160deg, #0f0a05 0%, #1a0f02 40%, #0d1a0a 100%);
+      font-family: 'Lora', serif;
+      color: #e2d9c8;
+      min-height: 100vh;
+    }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #1e1a10; }
+    ::-webkit-scrollbar-thumb { background: #f97316; border-radius: 10px; }
+    .spin { animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .chord-badge {
+      display: inline-block;
+      background: linear-gradient(135deg, #f97316, #ea580c);
+      color: #fff;
+      border-radius: 6px;
+      padding: 2px 10px;
+      font-family: 'Courier Prime', monospace;
+      font-weight: 700;
+      font-size: 0.85rem;
+      margin: 0 3px;
+      box-shadow: 0 2px 8px rgba(249,115,22,0.4);
+      vertical-align: middle;
+      letter-spacing: 0.05em;
+    }
+    button { transition: all 0.2s ease; cursor: pointer; }
+    button:active { transform: scale(0.97); }
+    .noise-bg {
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+    .content { position: relative; z-index: 1; max-width: 880px; margin: 0 auto; padding: 1.5rem; }
+    @media (max-width: 640px) {
+      .hero-title { font-size: 2rem; }
+      .strum-circle { width: 45px !important; height: 45px !important; font-size: 0.9rem !important; }
+    }
+    .lyrics-line { line-height: 2.2; font-size: 1.05rem; }
+    .tab-button {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(249,115,22,0.2);
+      border-radius: 40px;
+      padding: 8px 20px;
+      color: #a89070;
+      font-size: 0.9rem;
+    }
+    .tab-button.active {
+      background: linear-gradient(135deg, #f97316, #ea580c);
+      border-color: transparent;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+<div class="noise-bg"></div>
+<div class="content" id="app"></div>
+
+<script>
+  // --------------------------------------------------------------
+  // ChordCraft – Vanilla JS, no React, no build step, fully working
+  // --------------------------------------------------------------
+  
+  // ---- Helper: extract YouTube ID ----
+  function extractVideoId(url) {
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+      /^([a-zA-Z0-9_-]{11})$/
+    ];
+    for (let p of patterns) {
+      const m = url.match(p);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  // ---- Demo data generator (intelligent based on URL) ----
+  function getDemoData(videoId, userUrl) {
+    const isAssamese = /assamese|axomiya|bihu|zubeen|papon/i.test(userUrl);
+    if (isAssamese) {
+      return {
+        raw: `**Song Title & Artist** অসমীয়া সুৰ (Assamese Melody) · Folk Artist
+**Key & Tempo** C Major · 98 BPM
+**Chord Progression** C - G - Am - F
+**Strumming Pattern** D D U U D U
+
+**Lyrics with Chords**
+[C]মোৰ মনৰ [G]মাজত এটা [Am]সুপোন [F]আছে
+[C]বিহুৰ [G]মাতে মোক [Am]দূৰলৈ [F]নে
+
+[C]ৰঙা ৰঙা [G]পখিলা [Am]উৰি [F]যাই
+[C]প্ৰেমৰ [G]গান মই [Am]গাই [F]থকো
+
+**Romanized**
+[C]Mor monor [G]majot eta [Am]supon [F]ase
+[C]Bihuro [G]mate mok [Am]durali [F]ne
+
+**Tips for Beginners**  
+✓ Use capo on 2nd fret for brighter tone  
+✓ Practice C→G transition first`,
+        songTitle: "অসমীয়া গীত (Assamese Song)",
+        key: "C Major",
+        tempo: "98 BPM",
+        strumming: "D D U U D U",
+        videoId: videoId,
+        isDemo: true
+      };
+    }
+    return {
+      raw: `**Song Title & Artist** Beautiful Melody · Popular Artist
+**Key & Tempo** G Major · 112 BPM
+**Chord Progression** G - D - Em - C
+**Strumming Pattern** D DU UDU
+
+**Lyrics with Chords**
+[G]This is the [D]song you [Em]wanted to [C]play
+[G]Strum along [D]every single [Em]day [C]
+
+[G]Feel the rhythm [D]in your [Em]soul
+[C]Let the music [G]take control
+
+**Verse 2**
+[Em]Close your eyes and [C]let it flow
+[G]Every chord will [D]help you grow
+
+**Tips for Beginners**  
+• Practice each chord change slowly  
+• Use a metronome at 80 BPM  
+• Keep your strumming hand relaxed`,
+      songTitle: "Melody from YouTube",
+      key: "G Major",
+      tempo: "112 BPM",
+      strumming: "D DU UDU",
+      videoId: videoId,
+      isDemo: true
+    };
+  }
+
+  // ---- Render chord badges inside lyrics ----
+  function renderLyrics(content) {
+    if (!content) return '';
+    const lines = content.split('\n');
+    let html = '';
+    const chordRegex = /\[([A-G][#b]?(?:m|maj|min|sus|aug|dim|add)?[0-9]*(?:\/[A-G][#b]?)?)\]/g;
+    
+    for (let line of lines) {
+      let lastIdx = 0;
+      let match;
+      let parts = [];
+      while ((match = chordRegex.exec(line)) !== null) {
+        if (match.index > lastIdx) {
+          parts.push(`<span style="color:#d4c5a9">${escapeHtml(line.slice(lastIdx, match.index))}</span>`);
+        }
+        parts.push(`<span class="chord-badge">${escapeHtml(match[1])}</span>`);
+        lastIdx = match.index + match[0].length;
+      }
+      if (lastIdx < line.length) {
+        parts.push(`<span style="color:#d4c5a9">${escapeHtml(line.slice(lastIdx))}</span>`);
+      }
+      
+      if (parts.length === 0) {
+        // heading or empty
+        let style = '';
+        let text = line.replace(/^#+\s*/, '').replace(/\*\*/g, '');
+        if (line.startsWith('##')) {
+          style = 'color:#f97316; font-weight:700; font-size:1.1rem; margin-top:1.2em;';
+        } else if (line.startsWith('#')) {
+          style = 'color:#fbbf24; font-weight:600; font-size:1rem; margin-top:0.8em;';
+        } else if (line.match(/^\*\*[^*]+\*\*/)) {
+          style = 'color:#fbbf24; font-weight:600; margin-top:0.5em;';
+        } else {
+          style = 'min-height:1.5em;';
+        }
+        html += `<div style="${style}">${escapeHtml(text)}</div>`;
+      } else {
+        html += `<div style="min-height:1.5em">${parts.join('')}</div>`;
+      }
+    }
+    return html;
+  }
+  
+  function escapeHtml(str) {
+    return str.replace(/[&<>]/g, function(m) {
+      if (m === '&') return '&amp;';
+      if (m === '<') return '&lt;';
+      if (m === '>') return '&gt;';
+      return m;
+    });
+  }
+
+  // ---- Real API call to Anthropic ----
+  async function fetchRealChords(videoId, userUrl, apiKey) {
+    const prompt = `You are a professional guitarist. YouTube URL: ${userUrl} (ID: ${videoId}). Provide:
+
+1. **Song Title & Artist** (guess from context)
+2. **Key & Tempo** (e.g., "C Major · 104 BPM")
+3. **Chord Progression** (main chords used)
+4. **Strumming Pattern** (D/U notation, e.g., D DU UDU)
+5. **Full Lyrics with Chords** inline like [G]Twinkle [C]star
+
+Rules:
+- If song appears Assamese, provide lyrics in Assamese script + romanized.
+- Label verse/chorus/bridge.
+- End with "Tips for Beginners".
+
+Be realistic and helpful.`;
+    
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-3-sonnet-20240229",
+        max_tokens: 2200,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+    if (!response.ok) {
+      const errData = await response.json();
+      throw new Error(errData.error?.message || `API error ${response.status}`);
+    }
+    const data = await response.json();
+    let fullText = "";
+    if (data.content && Array.isArray(data.content)) {
+      fullText = data.content.map(c => c.type === "text" ? c.text : "").join("\n");
+    } else if (data.content?.text) fullText = data.content.text;
+    else throw new Error("Invalid API response");
+    
+    const songTitleMatch = fullText.match(/\*\*Song Title[^*]*\*\*[:\s]*([^\n]+)/i);
+    const keyMatch = fullText.match(/\*\*Key[^*]*\*\*[:\s]*([^\n]+)/i);
+    const tempoMatch = fullText.match(/\*\*Tempo[^*]*\*\*[:\s]*([^\n]+)/i);
+    const strumMatch = fullText.match(/\*\*Strumming Pattern[^*]*\*\*[:\s]*\n?([^\n*#]+)/i);
+    
+    return {
+      raw: fullText,
+      songTitle: songTitleMatch?.[1]?.trim() || "Song Analysis",
+      key: keyMatch?.[1]?.trim() || "Unknown",
+      tempo: tempoMatch?.[1]?.trim() || "Unknown",
+      strumming: strumMatch?.[1]?.trim() || "D DU UDU",
+      videoId: videoId,
+      isDemo: false
+    };
+  }
+
+  // ---- Main App (vanilla JS state management) ----
+  let state = {
+    url: '',
+    apiKey: localStorage.getItem('anthropic_api_key') || '',
+    loading: false,
+    result: null,
+    error: '',
+    activeTab: 'chords',
+    usingDemo: false
+  };
+  
+  let elements = {};
+  
+  function saveApiKeyToLocalStorage(key) {
+    if (key) localStorage.setItem('anthropic_api_key', key);
+    else localStorage.removeItem('anthropic_api_key');
+  }
+  
+  async function handleFetch(forceDemo = false) {
+    const urlInput = elements.urlInput.value;
+    const apiKeyInput = elements.apiKeyInput.value;
+    if (!urlInput.trim()) {
+      state.error = "🎵 Please paste a YouTube URL or video ID.";
+      render();
+      return;
+    }
+    const videoId = extractVideoId(urlInput);
+    if (!videoId) {
+      state.error = "❌ Invalid YouTube link. Use format: https://youtu.be/... or youtube.com/watch?v=...";
+      render();
+      return;
+    }
+    
+    if (forceDemo || !apiKeyInput.trim()) {
+      state.loading = true;
+      state.error = '';
+      render();
+      setTimeout(() => {
+        const demo = getDemoData(videoId, urlInput);
+        state.result = demo;
+        state.loading = false;
+        state.usingDemo = true;
+        if (!apiKeyInput.trim() && !forceDemo) {
+          state.error = "ℹ️ Demo mode active. Add Anthropic API key for real transcriptions.";
+        } else {
+          state.error = '';
+        }
+        render();
+      }, 700);
+      return;
+    }
+    
+    // real API
+    state.loading = true;
+    state.error = '';
+    state.usingDemo = false;
+    render();
+    try {
+      const real = await fetchRealChords(videoId, urlInput, apiKeyInput);
+      state.result = real;
+      state.loading = false;
+      state.error = '';
+    } catch (err) {
+      console.error(err);
+      state.error = `⚠️ API error: ${err.message}. Switching to demo mode.`;
+      const demoFallback = getDemoData(videoId, urlInput);
+      state.result = demoFallback;
+      state.usingDemo = true;
+      state.loading = false;
+    }
+    render();
+  }
+  
+  function setActiveTab(tab) {
+    state.activeTab = tab;
+    render();
+  }
+  
+  function render() {
+    const app = document.getElementById('app');
+    if (!app) return;
+    
+    const isDemoActive = state.usingDemo && state.result;
+    const errorHtml = state.error ? `<p style="color:#f87171; font-size:0.85rem; margin-top:14px;">⚠️ ${escapeHtml(state.error)}</p>` : '';
+    const demoHint = (isDemoActive && !state.loading) ? `<p style="color:#fbbf24; font-size:0.8rem; margin-top:12px;">🎵 Demo data · add API key for real transcription</p>` : '';
+    
+    let mainContent = '';
+    if (state.loading) {
+      mainContent = `
+        <div style="text-align:center; padding:2rem;">
+          <div class="spin" style="width:48px; height:48px; border:3px solid rgba(249,115,22,0.2); border-top-color:#f97316; border-radius:50%; margin:0 auto 1rem;"></div>
+          <p style="color:#a89070;">Transcribing chords & lyrics... 🎶</p>
+        </div>
+      `;
+    } else if (state.result) {
+      const r = state.result;
+      const chordsHtml = renderLyrics(r.raw);
+      const strummingWords = r.strumming.split(' ');
+      const strumCircles = strummingWords.map((beat, i) => `
+        <div class="strum-circle" style="width:58px; height:58px; border-radius:50%; background:${beat && beat.includes('D') ? 'linear-gradient(135deg,#f97316,#ea580c)' : 'rgba(249,115,22,0.2)'}; border:2px solid rgba(249,115,22,0.5); display:flex; align-items:center; justify-content:center; font-weight:bold; color:white; font-size:1.2rem;">${escapeHtml(beat || '?')}</div>
+      `).join('');
+      
+      mainContent = `
+        <div>
+          <div style="background:rgba(249,115,22,0.08); border:1px solid ${r.isDemo ? 'rgba(251,191,36,0.3)' : 'rgba(249,115,22,0.3)'}; border-radius:20px; padding:1rem 1.5rem; margin-bottom:1.5rem; display:flex; flex-wrap:wrap; gap:1rem; align-items:center;">
+            <div style="flex:1"><div style="font-size:0.7rem; color:#a89070;">SONG</div><div style="font-family:'Playfair Display'; font-weight:bold; font-size:1.2rem; color:#fbbf24;">${escapeHtml(r.songTitle)}</div></div>
+            <div><div style="font-size:0.7rem; color:#a89070;">KEY</div><div style="font-family:'Courier Prime'; font-weight:bold; color:#f97316;">${escapeHtml(r.key)}</div></div>
+            <div><div style="font-size:0.7rem; color:#a89070;">TEMPO</div><div style="font-family:'Courier Prime'; font-weight:bold; color:#f97316;">${escapeHtml(r.tempo)}</div></div>
+          </div>
+          <div style="display:flex; gap:8px; margin-bottom:1rem; flex-wrap:wrap;">
+            <button class="tab-button ${state.activeTab === 'chords' ? 'active' : ''}" data-tab="chords">🎸 Chords & Lyrics</button>
+            <button class="tab-button ${state.activeTab === 'strumming' ? 'active' : ''}" data-tab="strumming">🥁 Strumming Pattern</button>
+            <button class="tab-button ${state.activeTab === 'video' ? 'active' : ''}" data-tab="video">▶ Watch on YouTube</button>
+          </div>
+          <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(249,115,22,0.15); border-radius:24px; padding:1.8rem; min-height:380px;">
+            ${state.activeTab === 'chords' ? `<div class="lyrics-line">${chordsHtml}</div>` : ''}
+            ${state.activeTab === 'strumming' ? `
+              <h3 style="color:#fbbf24; font-family:'Playfair Display'; margin-bottom:1rem;">🥁 Strumming Pattern</h3>
+              <div style="background:rgba(0,0,0,0.5); border-radius:20px; padding:1rem; font-family:'Courier Prime'; font-size:1.6rem; letter-spacing:0.2em; color:#f97316; text-align:center; margin-bottom:1.5rem; word-break:break-word;">${escapeHtml(r.strumming)}</div>
+              <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom:1rem;">${strumCircles}</div>
+              <p style="text-align:center; color:#a89070; font-size:0.8rem;">D = downstroke &nbsp;&nbsp; U = upstroke</p>
+            ` : ''}
+            ${state.activeTab === 'video' ? `
+              <h3 style="color:#fbbf24; margin-bottom:1rem;">▶ Original performance</h3>
+              <div style="border-radius:16px; overflow:hidden; aspect-ratio:16/9; background:#000;">
+                <iframe width="100%" height="100%" src="https://www.youtube.com/embed/${r.videoId}" title="YouTube video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    } else {
+      mainContent = `
+        <div style="margin-top:2rem; display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1rem;">
+          ${['🎵 Any Genre','🪗 Assamese Songs','🎼 Chord Charts','🥁 Strumming Patterns'].map(t => `<div style="background:rgba(255,255,255,0.02); border:1px solid rgba(249,115,22,0.12); border-radius:12px; padding:1.25rem; text-align:center;"><div style="font-size:1.8rem;">${t.split(' ')[0]}</div><div style="font-family:'Playfair Display'; color:#fbbf24; font-weight:700;">${t.slice(2)}</div><div style="color:#7a6a55; font-size:0.8rem;">${t.includes('Assamese') ? 'Bihu, Modern, Traditional' : (t.includes('Chords') ? 'Inline chord markers' : (t.includes('Strumming') ? 'Down/Up notation' : 'Pop, Rock, Folk'))}</div></div>`).join('')}
+        </div>
+      `;
+    }
+    
+    const html = `
+      <div style="text-align:center; margin-bottom:2rem;">
+        <div style="font-size:3rem;">🎸</div>
+        <h1 style="font-family:'Playfair Display'; font-size:clamp(2rem,6vw,3.5rem); font-weight:900; background:linear-gradient(135deg,#fbbf24,#f97316); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:0.5rem;">ChordCraft</h1>
+        <p style="color:#a89070; font-style:italic;">YouTube → Guitar chords, strumming & lyrics · Assamese supported</p>
+      </div>
+      <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(249,115,22,0.25); border-radius:24px; padding:1.5rem; backdrop-filter:blur(8px); margin-bottom:2rem;">
+        <div style="margin-bottom:1.2rem;">
+          <label style="font-size:0.7rem; text-transform:uppercase; color:#a89070; display:block; margin-bottom:6px;">🔑 Anthropic API Key (optional)</label>
+          <div style="display:flex; gap:8px;">
+            <input type="password" id="apiKeyInput" value="${escapeHtml(state.apiKey)}" placeholder="sk-ant-api03-..." style="flex:1; background:rgba(0,0,0,0.5); border:1px solid rgba(249,115,22,0.3); border-radius:12px; padding:10px 14px; color:#e2d9c8; font-family:'Courier Prime'; font-size:0.85rem;">
+            <button id="toggleKeyBtn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(249,115,22,0.3); border-radius:10px; padding:8px 14px; color:#a89070;">👁️</button>
+          </div>
+          <p style="font-size:0.7rem; color:#7a6a55; margin-top:6px;">Get free key from <a href="https://console.anthropic.com/" target="_blank" style="color:#f97316;">Anthropic Console</a> — leave blank to use intelligent demo mode</p>
+        </div>
+        <label style="font-size:0.7rem; text-transform:uppercase; color:#f97316; margin-bottom:6px; display:block;">🎵 YouTube URL or ID</label>
+        <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
+          <input id="urlInput" value="${escapeHtml(state.url)}" placeholder="https://youtu.be/Kz1kCHEJeT4 or https://www.youtube.com/watch?v=..." style="flex:1; background:rgba(0,0,0,0.4); border:1px solid rgba(249,115,22,0.3); border-radius:14px; padding:12px 16px; color:#e2d9c8; font-family:'Courier Prime'; outline:none;">
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+          <button id="fetchBtn" style="flex:1; background:linear-gradient(135deg,#f97316,#ea580c); border:none; border-radius:40px; padding:12px 20px; color:white; font-weight:bold; font-size:1rem; box-shadow:0 4px 14px rgba(249,115,22,0.3);">✨ Get Chords & Lyrics</button>
+          <button id="demoBtn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(249,115,22,0.5); border-radius:40px; padding:12px 20px; color:#fbbf24;">🎸 Demo Mode</button>
+        </div>
+        ${errorHtml}
+        ${demoHint}
+      </div>
+      ${mainContent}
+      <footer style="text-align:center; margin-top:3rem; padding:1.5rem; border-top:1px solid rgba(249,115,22,0.1); color:#5a4a35; font-size:0.75rem;">
+        ChordCraft · AI-powered guitar tool · Free for everyone · 🎸 Strum on!
+      </footer>
+    `;
+    
+    app.innerHTML = html;
+    
+    // rebind events
+    document.getElementById('urlInput')?.addEventListener('input', (e) => { state.url = e.target.value; });
+    document.getElementById('apiKeyInput')?.addEventListener('input', (e) => { state.apiKey = e.target.value; saveApiKeyToLocalStorage(e.target.value); });
+    document.getElementById('fetchBtn')?.addEventListener('click', () => handleFetch(false));
+    document.getElementById('demoBtn')?.addEventListener('click', () => handleFetch(true));
+    document.getElementById('toggleKeyBtn')?.addEventListener('click', () => {
+      const input = document.getElementById('apiKeyInput');
+      if (input.type === 'password') input.type = 'text';
+      else input.type = 'password';
+    });
+    document.querySelectorAll('.tab-button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const tab = btn.getAttribute('data-tab');
+        if (tab) setActiveTab(tab);
+      });
+    });
+  }
+  
+  // initial render
+  render();
+</script>
+</body>
+</html>
